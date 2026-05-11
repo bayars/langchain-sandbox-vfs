@@ -1,0 +1,20 @@
+# Python
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+.venv/
+
+# Environment / secrets
+.env
+*.env.local
+
+# Next.js
+ui/.next/
+ui/node_modules/
+ui/.turbo/
+
+# OS
+.DS_Store

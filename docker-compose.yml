@@ -1,0 +1,98 @@
+services:
+
+  postgres:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_DB: agent
+      POSTGRES_USER: agent
+      POSTGRES_PASSWORD: agent
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U agent"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # S3-compatible object storage — Apache 2.0
+  # SeaweedFS replaces MinIO CE (archived Feb 2026, AGPL, $96K/yr commercial)
+  seaweedfs:
+    image: chrislusf/seaweedfs:latest
+    command: >
+      server
+      -dir=/data
+      -s3
+      -s3.port=8333
+      -s3.allowEmptyFolder=false
+      -s3.config=/etc/seaweedfs/s3.json
+      -master.volumeSizeLimitMB=512
+      -volume.max=10
+    ports:
+      - "9333:9333"   # master HTTP
+      - "8333:8333"   # S3 API
+      - "9301:9301"   # filer
+    volumes:
+      - seaweedfs_data:/data
+      - ./infra/seaweedfs/s3.json:/etc/seaweedfs/s3.json:ro
+    healthcheck:
+      # SeaweedFS -server mode takes ~30s to bind all ports; start_period absorbs early failures
+      test: ["CMD-SHELL", "wget -q -O- http://localhost:9333/cluster/status || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 60s
+
+  agent:
+    build: .
+    environment:
+      LLM_GATEWAY_URL: http://10.0.0.224:11434/v1
+      LLM_GATEWAY_KEY: ollama
+      MODEL_GENERAL: qwen3:8b
+      MODEL_CODE: qwen2.5-coder:14b
+      MODEL_FAST: qwen2.5:1.5b
+      DATABASE_URL: postgresql://agent:agent@postgres:5432/agent
+      # S3-compatible vars — works for SeaweedFS, Ceph RGW, RustFS, or any S3 endpoint
+      S3_ENDPOINT: seaweedfs:8333
+      S3_PUBLIC_ENDPOINT: localhost:8333   # host-accessible address for presigned URLs
+      S3_ACCESS_KEY: agent_access
+      S3_SECRET_KEY: agent_secret
+      S3_BUCKET: agent-vfs
+      S3_SECURE: "false"
+      AGENT_SANDBOX_BACKEND: local
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      seaweedfs:
+        # Agent connects to SeaweedFS on demand (per request), not at startup.
+        # service_started is sufficient; healthcheck monitors SeaweedFS independently.
+        condition: service_started
+    develop:
+      watch:
+        - action: sync
+          path: .
+          target: /app
+          ignore: [ui/, .venv/]
+
+  ui:
+    build: ./ui
+    environment:
+      NEXT_PUBLIC_AGENT_URL: http://localhost:8000
+      AGENT_URL: http://agent:8000
+    ports:
+      - "3001:3000"
+    depends_on:
+      - agent
+    develop:
+      watch:
+        - action: sync
+          path: ./ui
+          target: /app
+          ignore: [node_modules/]
+
+volumes:
+  postgres_data:
+  seaweedfs_data:

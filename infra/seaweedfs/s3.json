@@ -1,0 +1,33 @@
+{
+  "identities": [
+    {
+      "name": "agent",
+      "credentials": [
+        {
+          "accessKey": "agent_access",
+          "secretKey": "agent_secret"
+        }
+      ],
+      "actions": [
+        "Read",
+        "Write",
+        "List",
+        "Tagging",
+        "Admin"
+      ]
+    },
+    {
+      "name": "readonly",
+      "credentials": [
+        {
+          "accessKey": "readonly_access",
+          "secretKey": "readonly_secret"
+        }
+      ],
+      "actions": [
+        "Read",
+        "List"
+      ]
+    }
+  ]
+}
